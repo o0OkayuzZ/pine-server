@@ -1,0 +1,57 @@
+name: Rebuild public site from addon main
+
+on:
+  push:
+    branches:
+      - ops/rebuild-addon-20260921
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out publication repository
+        uses: actions/checkout@v4
+
+      - name: Fetch current addon source
+        run: git clone --depth 1 https://github.com/o0OkayuzZ/pinene-xserver-addons.git source
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install, validate, and build
+        working-directory: source/website
+        run: |
+          npm ci
+          npm run validate
+          npm run test:publication
+          npm run check
+          npm run build
+          node scripts/test-build-publication.mjs
+
+      - name: Publish generated files to gh-pages
+        run: |
+          rm -rf /tmp/pine-server-dist
+          mkdir -p /tmp/pine-server-dist
+          cp -a source/website/dist/. /tmp/pine-server-dist/
+          touch /tmp/pine-server-dist/.nojekyll
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin gh-pages
+          git checkout -B gh-pages origin/gh-pages
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -a /tmp/pine-server-dist/. .
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "No publication changes."
+            exit 0
+          fi
+
+          git commit -m "Publish website from pinene-xserver-addons main 294914f35aea"
+          git push origin gh-pages
